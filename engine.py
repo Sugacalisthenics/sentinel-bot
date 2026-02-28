@@ -1,90 +1,71 @@
+import streamlit as st
 import ccxt
 import os
 import time
-import sys
 from twilio.rest import Client
 from dotenv import load_dotenv
-from pathlib import Path
 
-# --- 🛰️ SYSTEM FIXES ---
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding='utf-8')
+# Page Config
+st.set_page_config(page_title="Suga's Sentinel", page_icon="📈")
+st.title("🛡️ Commodity Alpha Sentinel")
 
-# Smart path to find .env even if run from different folders
-env_path = Path(__file__).resolve().parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
-
-# --- ⚙️ TRADING CONFIGURATION ---
+# --- ⚙️ STRATEGY CONFIG ---
 SYMBOL = 'ETH/USDT'
 ENTRY_PRICE = 2045.93 
 STOP_LOSS = 1924.61
-TAKE_PROFIT = ENTRY_PRICE + (ENTRY_PRICE - STOP_LOSS) * 2 
-RISK_PER_TRADE = 50.0  # 1% of $5,000 account
+TAKE_PROFIT = 2288.57
+RISK_USD = 50.0  # 1% of $5,000 account
 
-# --- 🔑 CREDENTIALS ---
-acc_sid = os.getenv('TWILIO_ACCOUNT_SID')
-api_key = os.getenv('TWILIO_API_KEY')
-api_secret = os.getenv('TWILIO_API_SECRET')
-my_whatsapp = os.getenv('MY_WHATSAPP')
+# --- 🔑 CREDENTIALS (From Streamlit Secrets) ---
+def get_secrets():
+    return {
+        "binance_key": st.secrets["BINANCE_API_KEY"],
+        "binance_secret": st.secrets["BINANCE_SECRET_KEY"],
+        "twilio_sid": st.secrets["TWILIO_ACCOUNT_SID"],
+        "twilio_token": st.secrets["TWILIO_API_KEY"], # Use your Twilio Token/Secret
+        "my_whatsapp": st.secrets["MY_WHATSAPP"]
+    }
 
-# --- 🏗️ INITIALIZE SERVICES ---
-exchange = ccxt.binance({
-    'apiKey': os.getenv('BINANCE_API_KEY'),
-    'secret': os.getenv('BINANCE_SECRET_KEY'),
-    'enableRateLimit': True
-})
+try:
+    secrets = get_secrets()
+    exchange = ccxt.binance({
+        'apiKey': secrets["binance_key"],
+        'secret': secrets["binance_secret"],
+        'enableRateLimit': True,
+    })
 
-def send_whatsapp_alert(msg):
-    try:
-        client = Client(api_key, api_secret, acc_sid)
-        client.messages.create(
-            from_='whatsapp:+14155238886',
-            body=msg,
-            to=my_whatsapp
-        )
-        print("--- WhatsApp Alert Sent! ---")
-    except Exception as e:
-        print(f"WhatsApp Error: {e}")
+    # Sidebar Stats
+    st.sidebar.header("📊 Account Strategy")
+    st.sidebar.write(f"**Target Profit:** $400 (8%)")
+    st.sidebar.write(f"**Risk per Trade:** ${RISK_USD} (1%)")
 
-def run_engine():
-    print(f"--- Sentinel Engine Active: Monitoring {SYMBOL} ---")
-    print(f"Target: {ENTRY_PRICE} | SL: {STOP_LOSS} | TP: {TAKE_PROFIT}")
-    
-    trade_executed = False
-    
-    while not trade_executed:
-        try:
-            ticker = exchange.fetch_ticker(SYMBOL)
-            current_price = ticker['last']
-            
-            # 🚨 BREAKOUT TRIGGER
-            if current_price >= ENTRY_PRICE:
-                # Position Size Math
-                qty = RISK_PER_TRADE / (ENTRY_PRICE - STOP_LOSS)
-                
-                alert_text = (
-                    f"🚀 *SENTINEL: ETH BREAKOUT!*\n\n"
-                    f"Price: ${current_price}\n"
-                    f"Size: {qty:.4f} ETH\n"
-                    f"Risk: $50 (Fixed)\n"
-                    f"SL: ${STOP_LOSS} | TP: ${TAKE_PROFIT}"
-                )
-                
-                print(f"BREAKOUT! Sending Alert...")
-                send_whatsapp_alert(alert_text)
-                
-                # Note: Trade execution logic would go here
-                trade_executed = True
-                
-            else:
-                # \r updates the same line to keep terminal clean
-                print(f"Market Stable: ${current_price} | Gap: ${ENTRY_PRICE - current_price:.2f}", end='\r')
-            
-            time.sleep(5)
-            
-        except Exception as e:
-            print(f"\nEngine Error: {e}")
-            break
+    # Live Data Fetching
+    ticker = exchange.fetch_ticker(SYMBOL)
+    current_price = ticker['last']
+    gap = ENTRY_PRICE - current_price
 
-if __name__ == "__main__":
-    run_engine()
+    # Dashboard Metrics
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Current Price", f"${current_price}")
+    col2.metric("Entry Target", f"${ENTRY_PRICE}")
+    col3.metric("Gap to Entry", f"${gap:.2f}", delta_color="inverse")
+
+    # Logic & Calculations
+    st.subheader("🛡️ Sentinel Logic")
+    if current_price >= ENTRY_PRICE:
+        qty = RISK_USD / (ENTRY_PRICE - STOP_LOSS)
+        st.success(f"🚀 **BREAKOUT DETECTED!**")
+        st.write(f"**Recommended Quantity:** {qty:.4f} ETH")
+        st.info("Manual Action Required on Binance App")
+    else:
+        st.warning(f"Waiting for Breakout... Market is ${gap:.2f} away from Entry.")
+
+    # Risk Table
+    st.table({
+        "Parameter": ["Entry", "Stop Loss", "Take Profit", "Risk Amount"],
+        "Value": [ENTRY_PRICE, STOP_LOSS, TAKE_PROFIT, f"${RISK_USD}"]
+    })
+
+except Exception as e:
+    st.error(f"Setup Error: {e}")
+    st.info("Please add your API Keys in Streamlit Cloud > Settings > Secrets")
