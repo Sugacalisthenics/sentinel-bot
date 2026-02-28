@@ -1,0 +1,10 @@
+streamlit
+arxiv
+pandas
+wordcloud
+matplotlib
+textblob
+PyPDF2
+python-docx
+python-pptx
+nltk
