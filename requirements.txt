@@ -1,10 +1,4 @@
-MetaTrader5
-pandas
-pandas_ta
-numpy
-fastapi
-uvicorn
-requests
-python-dotenv
 streamlit
-matplotlib
+ccxt
+twilio
+python-dotenv
